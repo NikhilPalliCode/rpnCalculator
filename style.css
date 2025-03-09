@@ -1,0 +1,122 @@
+/* General Styles */
+body {
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+  }
+  
+  h1 {
+    margin-bottom: 20px;
+    font-size: 2rem;
+    color: #333;
+  }
+  
+  /* Container for Stack and Input */
+  .container {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Stack Display */
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .stack-item {
+    width: 150px;
+    padding: 10px;
+    font-size: 1.2rem;
+    text-align: right;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #f9f9f9;
+    color: #333;
+  }
+  
+  /* Input Box and Enter Button */
+  .input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  #input-box {
+    width: 150px;
+    padding: 10px;
+    font-size: 1.2rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #f9f9f9;
+    color: #333;
+  }
+  
+  #input-box::placeholder {
+    color: #999;
+  }
+  
+  #enter {
+    padding: 10px;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 8px;
+    background: #007bff;
+    color: white;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  
+  #enter:hover {
+    background: #0056b3;
+  }
+  
+  /* Operations Buttons */
+  .operations {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+  }
+  
+  .operations button {
+    width: 70px;
+    padding: 15px;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 8px;
+    background: #28a745;
+    color: white;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  
+  .operations button:hover {
+    background: #218838;
+  }
+  
+  /* Clear Button */
+  #clear {
+    margin-bottom: 20px;
+    padding: 10px 20px;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 8px;
+    background: #dc3545;
+    color: white;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  
+  #clear:hover {
+    background: #c82333;
+  }

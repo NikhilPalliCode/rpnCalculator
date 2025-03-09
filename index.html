@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPN Calculator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Reverse Polish Notation Calculator</h1>
+  <button type="button" id="clear">Clear Stack</button>
+  <div class="container">
+    <div class="stack">
+      <input type="text" class="stack-item" id="stack-8" value="0" readonly>
+      <input type="text" class="stack-item" id="stack-7" value="0" readonly>
+      <input type="text" class="stack-item" id="stack-6" value="0" readonly>
+      <input type="text" class="stack-item" id="stack-5" value="0" readonly>
+      <input type="text" class="stack-item" id="stack-4" value="0" readonly>
+      <input type="text" class="stack-item" id="stack-3" value="0" readonly>
+      <input type="text" class="stack-item" id="stack-2" value="0" readonly>
+      <input type="text" class="stack-item" id="stack-1" value="0" readonly>
+    </div>
+    <div class="input-container">
+      <input type="text" id="input-box" placeholder="Enter a number">
+      <button type="button" id="enter">Enter</button>
+    </div>
+  </div>
+
+  <div class="operations">
+    <button type="button" id="plus">+</button>
+    <button type="button" id="minus">-</button>
+    <button type="button" id="multiply">*</button>
+    <button type="button" id="divide">/</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
