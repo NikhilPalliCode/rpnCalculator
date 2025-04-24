@@ -6,6 +6,8 @@ pipeline {
         GCS_BUCKET = 'rpn-calculator-builds'
         APP_NAME = 'rpn-calculator'
         CLOUD_RUN_REGION = 'us-central1'
+        // Use the full path where gcloud is installed
+        GCLOUD_PATH = 'C:\\Users\\nikhi\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd'
     }
     
     stages {
@@ -36,7 +38,7 @@ pipeline {
                     # Create new temp directory
                     New-Item -ItemType Directory -Path "temp" | Out-Null
                     
-                    # Copy files excluding patterns (using Where-Object to avoid self-copy)
+                    # Copy files excluding patterns
                     Get-ChildItem -Exclude "*.git*", "temp", "Jenkinsfile" | 
                         Where-Object { $_.FullName -ne (Resolve-Path "temp").Path } |
                         Copy-Item -Destination "temp" -Recurse -Force
@@ -52,26 +54,52 @@ pipeline {
             }
         }
         
+        stage('Verify GCloud') {
+            steps {
+                script {
+                    // Verify gcloud exists at the specified path
+                    def gcloudExists = bat(
+                        script: 'if exist "%GCLOUD_PATH%" (exit 0) else (exit 1)',
+                        returnStatus: true
+                    ) == 0
+                    
+                    if (!gcloudExists) {
+                        error("gcloud not found at: ${env.GCLOUD_PATH}")
+                    }
+                    
+                    // Test basic gcloud command
+                    def gcloudWorks = bat(
+                        script: '"%GCLOUD_PATH%" --version',
+                        returnStatus: true
+                    ) == 0
+                    
+                    if (!gcloudWorks) {
+                        error("gcloud command failed at: ${env.GCLOUD_PATH}")
+                    }
+                }
+            }
+        }
+        
         stage('Deploy to GCP') {
             steps {
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
-                    bat '''
-                        gcloud auth activate-service-account --key-file="%GCP_KEY%"
-                        gcloud config set project %GCP_PROJECT%
+                    bat """
+                        "%GCLOUD_PATH%" auth activate-service-account --key-file="%GCP_KEY%"
+                        "%GCLOUD_PATH%" config set project %GCP_PROJECT%
                         
-                        echo "Uploading to Cloud Storage..."
-                        gsutil cp rpn-calculator.zip gs://%GCS_BUCKET%/builds/%BUILD_NUMBER%.zip
+                        echo Uploading to Cloud Storage...
+                        "%GCLOUD_PATH%" storage cp rpn-calculator.zip gs://%GCS_BUCKET%/builds/%BUILD_NUMBER%.zip
                         
-                        echo "Building container..."
-                        gcloud builds submit --tag gcr.io/%GCP_PROJECT%/%APP_NAME%
+                        echo Building container...
+                        "%GCLOUD_PATH%" builds submit --tag gcr.io/%GCP_PROJECT%/%APP_NAME%
                         
-                        echo "Deploying to Cloud Run..."
-                        gcloud run deploy %APP_NAME% ^
+                        echo Deploying to Cloud Run...
+                        "%GCLOUD_PATH%" run deploy %APP_NAME% ^
                           --image gcr.io/%GCP_PROJECT%/%APP_NAME% ^
                           --platform managed ^
                           --region %CLOUD_RUN_REGION% ^
                           --allow-unauthenticated
-                    '''
+                    """
                 }
             }
         }
@@ -87,7 +115,7 @@ pipeline {
         success {
             script {
                 def url = bat(
-                    script: 'gcloud run services describe %APP_NAME% --platform managed --region %CLOUD_RUN_REGION% --format="value(status.url)"',
+                    script: '"%GCLOUD_PATH%" run services describe %APP_NAME% --platform managed --region %CLOUD_RUN_REGION% --format="value(status.url)"',
                     returnStdout: true
                 ).trim()
                 echo "✅ Deployment Successful! Access your app at: ${url}"
