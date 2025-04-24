@@ -6,7 +6,6 @@ pipeline {
         GCS_BUCKET = 'rpn-calculator-builds'
         APP_NAME = 'rpn-calculator'
         CLOUD_RUN_REGION = 'us-central1'
-        // Use the full path where gcloud is installed
         GCLOUD_PATH = 'C:\\Users\\nikhi\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd'
     }
     
@@ -31,52 +30,36 @@ pipeline {
             steps {
                 powershell '''
                     # Clean up previous temp directory if exists
-                    if (Test-Path "temp") {
-                        Remove-Item "temp" -Recurse -Force
+                    $tempDir = "$env:WORKSPACE\\temp"
+                    if (Test-Path $tempDir) { 
+                        Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
                     }
                     
                     # Create new temp directory
-                    New-Item -ItemType Directory -Path "temp" | Out-Null
+                    New-Item -ItemType Directory -Path $tempDir | Out-Null
                     
                     # Copy files excluding patterns
                     Get-ChildItem -Exclude "*.git*", "temp", "Jenkinsfile" | 
-                        Where-Object { $_.FullName -ne (Resolve-Path "temp").Path } |
-                        Copy-Item -Destination "temp" -Recurse -Force
+                        Where-Object { $_.FullName -ne $tempDir } |
+                        Copy-Item -Destination $tempDir -Recurse -Force
                     
                     # Create zip archive
-                    Compress-Archive -Path "temp\\*" -DestinationPath "rpn-calculator.zip" -Force
+                    $zipPath = "$env:WORKSPACE\\rpn-calculator.zip"
+                    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
                     
-                    # Cleanup
-                    Remove-Item "temp" -Recurse -Force
+                    Add-Type -Assembly "System.IO.Compression.FileSystem"
+                    [IO.Compression.ZipFile]::CreateFromDirectory(
+                        $tempDir,
+                        $zipPath,
+                        [IO.Compression.CompressionLevel]::Optimal,
+                        $false
+                    )
+                    
+                    # Cleanup temp directory
+                    Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
                 '''
                 archiveArtifacts artifacts: 'rpn-calculator.zip', fingerprint: true
                 echo 'Application packaged successfully'
-            }
-        }
-        
-        stage('Verify GCloud') {
-            steps {
-                script {
-                    // Verify gcloud exists at the specified path
-                    def gcloudExists = bat(
-                        script: 'if exist "%GCLOUD_PATH%" (exit 0) else (exit 1)',
-                        returnStatus: true
-                    ) == 0
-                    
-                    if (!gcloudExists) {
-                        error("gcloud not found at: ${env.GCLOUD_PATH}")
-                    }
-                    
-                    // Test basic gcloud command
-                    def gcloudWorks = bat(
-                        script: '"%GCLOUD_PATH%" --version',
-                        returnStatus: true
-                    ) == 0
-                    
-                    if (!gcloudWorks) {
-                        error("gcloud command failed at: ${env.GCLOUD_PATH}")
-                    }
-                }
             }
         }
         
@@ -106,12 +89,6 @@ pipeline {
     }
     
     post {
-        always {
-            bat '''
-                del rpn-calculator.zip 2>nul || echo "No zip to delete"
-                rmdir /s /q temp 2>nul || echo "No temp dir to delete"
-            '''
-        }
         success {
             script {
                 def url = bat(
@@ -123,6 +100,17 @@ pipeline {
         }
         failure {
             echo "❌ Pipeline failed! Check the console output for details."
+        }
+        always {
+            // Safe cleanup that won't fail the pipeline
+            script {
+                try {
+                    bat 'del rpn-calculator.zip 2>nul || echo "No zip to delete"'
+                    bat 'rmdir /s /q temp 2>nul || echo "No temp dir to delete"'
+                } catch (Exception e) {
+                    echo "⚠️ Cleanup failed but pipeline continues: ${e.message}"
+                }
+            }
         }
     }
 }
