@@ -6,20 +6,13 @@ pipeline {
         GCS_BUCKET = 'rpn-calculator-builds'
         APP_NAME = 'rpn-calculator'
         CLOUD_RUN_REGION = 'us-central1'
-        // Updated to use the system-wide gcloud command
-        GCLOUD_PATH = 'gcloud'
     }
     
     stages {
         stage('Checkout Code') {
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: 'main']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/NikhilPalliCode/rpnCalculator.git'
-                    ]]
-                ])
+                git branch: 'main', 
+                url: 'https://github.com/NikhilPalliCode/rpnCalculator.git'
                 echo 'Code checked out successfully'
             }
         }
@@ -36,87 +29,43 @@ pipeline {
             steps {
                 powershell '''
                     # Clean up previous temp directory if exists
-                    $tempDir = "$env:WORKSPACE\\temp"
-                    if (Test-Path $tempDir) { 
-                        Remove-Item $tempDir -Recurse -Force 
+                    if (Test-Path "temp") {
+                        Remove-Item "temp" -Recurse -Force
                     }
                     
                     # Create new temp directory
-                    New-Item -ItemType Directory -Path $tempDir | Out-Null
+                    New-Item -ItemType Directory -Path "temp" | Out-Null
                     
-                    # Copy files excluding patterns
+                    # Copy files excluding patterns (using Where-Object to avoid self-copy)
                     Get-ChildItem -Exclude "*.git*", "temp", "Jenkinsfile" | 
-                        Where-Object { $_.FullName -ne $tempDir } |
-                        Copy-Item -Destination $tempDir -Recurse -Force
+                        Where-Object { $_.FullName -ne (Resolve-Path "temp").Path } |
+                        Copy-Item -Destination "temp" -Recurse -Force
                     
                     # Create zip archive
-                    $zipPath = "$env:WORKSPACE\\rpn-calculator.zip"
-                    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-                    
-                    Add-Type -Assembly "System.IO.Compression.FileSystem"
-                    [IO.Compression.ZipFile]::CreateFromDirectory(
-                        $tempDir,
-                        $zipPath,
-                        [IO.Compression.CompressionLevel]::Optimal,
-                        $false
-                    )
-                    
-                    # Verify zip was created
-                    if (!(Test-Path $zipPath)) { 
-                        throw "Failed to create zip file" 
-                    }
+                    Compress-Archive -Path "temp\\*" -DestinationPath "rpn-calculator.zip" -Force
                     
                     # Cleanup
-                    Remove-Item $tempDir -Recurse -Force
+                    Remove-Item "temp" -Recurse -Force
                 '''
                 archiveArtifacts artifacts: 'rpn-calculator.zip', fingerprint: true
                 echo 'Application packaged successfully'
             }
         }
         
-        stage('Verify GCloud') {
-            steps {
-                script {
-                    // First check if gcloud is in PATH
-                    def gcloudExists = bat(
-                        script: 'where gcloud',
-                        returnStatus: true
-                    ) == 0
-                    
-                    if (!gcloudExists) {
-                        error("gcloud not found in PATH. Please install Google Cloud SDK.")
-                    }
-                    
-                    // Test basic gcloud command
-                    def gcloudWorks = bat(
-                        script: 'gcloud --version',
-                        returnStatus: true
-                    ) == 0
-                    
-                    if (!gcloudWorks) {
-                        error("gcloud command failed. Check installation.")
-                    }
-                }
-            }
-        }
-        
-        stage('Authenticate') {
+        stage('Deploy to GCP') {
             steps {
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
                     bat '''
                         gcloud auth activate-service-account --key-file="%GCP_KEY%"
                         gcloud config set project %GCP_PROJECT%
-                        gcloud auth list
-                    '''
-                }
-            }
-        }
-        
-        stage('Deploy') {
-            steps {
-                withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
-                    bat '''
+                        
+                        echo "Uploading to Cloud Storage..."
+                        gsutil cp rpn-calculator.zip gs://%GCS_BUCKET%/builds/%BUILD_NUMBER%.zip
+                        
+                        echo "Building container..."
                         gcloud builds submit --tag gcr.io/%GCP_PROJECT%/%APP_NAME%
+                        
+                        echo "Deploying to Cloud Run..."
                         gcloud run deploy %APP_NAME% ^
                           --image gcr.io/%GCP_PROJECT%/%APP_NAME% ^
                           --platform managed ^
@@ -146,7 +95,6 @@ pipeline {
         }
         failure {
             echo "❌ Pipeline failed! Check the console output for details."
-            // Removed email to avoid SMTP issues
         }
     }
 }
