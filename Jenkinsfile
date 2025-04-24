@@ -6,15 +6,20 @@ pipeline {
         GCS_BUCKET = 'rpn-calculator-builds'
         APP_NAME = 'rpn-calculator'
         CLOUD_RUN_REGION = 'us-central1'
-        // Updated to your user-specific gcloud path
-        GCLOUD_PATH = 'C:\\Users\\nikhi\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd'
+        // Updated to use the system-wide gcloud command
+        GCLOUD_PATH = 'gcloud'
     }
     
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main', 
-                url: 'https://github.com/NikhilPalliCode/rpnCalculator.git'
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: 'main']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/NikhilPalliCode/rpnCalculator.git'
+                    ]]
+                ])
                 echo 'Code checked out successfully'
             }
         }
@@ -31,27 +36,38 @@ pipeline {
             steps {
                 powershell '''
                     # Clean up previous temp directory if exists
-                    if (Test-Path -Path "temp") {
-                        Remove-Item -Path "temp" -Recurse -Force
+                    $tempDir = "$env:WORKSPACE\\temp"
+                    if (Test-Path $tempDir) { 
+                        Remove-Item $tempDir -Recurse -Force 
                     }
                     
                     # Create new temp directory
-                    New-Item -ItemType Directory -Path "temp" | Out-Null
+                    New-Item -ItemType Directory -Path $tempDir | Out-Null
                     
                     # Copy files excluding patterns
                     Get-ChildItem -Exclude "*.git*", "temp", "Jenkinsfile" | 
-                        Copy-Item -Destination "temp" -Recurse -Force
+                        Where-Object { $_.FullName -ne $tempDir } |
+                        Copy-Item -Destination $tempDir -Recurse -Force
                     
                     # Create zip archive
-                    Compress-Archive -Path "temp\\*" -DestinationPath "rpn-calculator.zip" -Force
+                    $zipPath = "$env:WORKSPACE\\rpn-calculator.zip"
+                    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+                    
+                    Add-Type -Assembly "System.IO.Compression.FileSystem"
+                    [IO.Compression.ZipFile]::CreateFromDirectory(
+                        $tempDir,
+                        $zipPath,
+                        [IO.Compression.CompressionLevel]::Optimal,
+                        $false
+                    )
                     
                     # Verify zip was created
-                    if (!(Test-Path -Path "rpn-calculator.zip")) {
-                        throw "Failed to create zip file"
+                    if (!(Test-Path $zipPath)) { 
+                        throw "Failed to create zip file" 
                     }
                     
                     # Cleanup
-                    Remove-Item -Path "temp" -Recurse -Force
+                    Remove-Item $tempDir -Recurse -Force
                 '''
                 archiveArtifacts artifacts: 'rpn-calculator.zip', fingerprint: true
                 echo 'Application packaged successfully'
@@ -61,24 +77,24 @@ pipeline {
         stage('Verify GCloud') {
             steps {
                 script {
-                    // Verify the specified path exists
-                    def gcloudPathExists = bat(
-                        script: 'if exist "%GCLOUD_PATH%" (exit 0) else (exit 1)',
+                    // First check if gcloud is in PATH
+                    def gcloudExists = bat(
+                        script: 'where gcloud',
                         returnStatus: true
                     ) == 0
                     
-                    if (!gcloudPathExists) {
-                        error("gcloud not found at specified path: ${env.GCLOUD_PATH}")
+                    if (!gcloudExists) {
+                        error("gcloud not found in PATH. Please install Google Cloud SDK.")
                     }
                     
                     // Test basic gcloud command
                     def gcloudWorks = bat(
-                        script: '"%GCLOUD_PATH%" --version',
+                        script: 'gcloud --version',
                         returnStatus: true
                     ) == 0
                     
                     if (!gcloudWorks) {
-                        error("gcloud command failed at path: ${env.GCLOUD_PATH}")
+                        error("gcloud command failed. Check installation.")
                     }
                 }
             }
@@ -87,11 +103,11 @@ pipeline {
         stage('Authenticate') {
             steps {
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
-                    bat """
-                        "%GCLOUD_PATH%" auth activate-service-account --key-file="%GCP_KEY%"
-                        "%GCLOUD_PATH%" config set project %GCP_PROJECT%
-                        "%GCLOUD_PATH%" auth list
-                    """
+                    bat '''
+                        gcloud auth activate-service-account --key-file="%GCP_KEY%"
+                        gcloud config set project %GCP_PROJECT%
+                        gcloud auth list
+                    '''
                 }
             }
         }
@@ -99,14 +115,14 @@ pipeline {
         stage('Deploy') {
             steps {
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
-                    bat """
-                        "%GCLOUD_PATH%" builds submit --tag gcr.io/%GCP_PROJECT%/%APP_NAME%
-                        "%GCLOUD_PATH%" run deploy %APP_NAME% ^
+                    bat '''
+                        gcloud builds submit --tag gcr.io/%GCP_PROJECT%/%APP_NAME%
+                        gcloud run deploy %APP_NAME% ^
                           --image gcr.io/%GCP_PROJECT%/%APP_NAME% ^
                           --platform managed ^
                           --region %CLOUD_RUN_REGION% ^
                           --allow-unauthenticated
-                    """
+                    '''
                 }
             }
         }
@@ -122,7 +138,7 @@ pipeline {
         success {
             script {
                 def url = bat(
-                    script: '"%GCLOUD_PATH%" run services describe %APP_NAME% --platform managed --region %CLOUD_RUN_REGION% --format="value(status.url)"',
+                    script: 'gcloud run services describe %APP_NAME% --platform managed --region %CLOUD_RUN_REGION% --format="value(status.url)"',
                     returnStdout: true
                 ).trim()
                 echo "✅ Deployment Successful! Access your app at: ${url}"
@@ -130,7 +146,7 @@ pipeline {
         }
         failure {
             echo "❌ Pipeline failed! Check the console output for details."
-            // You can add email notifications later after SMTP is configured
+            // Removed email to avoid SMTP issues
         }
     }
 }
