@@ -8,6 +8,15 @@ pipeline {
     }
     
     stages {
+        stage('Verify Tools') {
+            steps {
+                bat '''
+                    where gcloud || echo "ERROR: gcloud not in PATH"
+                    where zip || echo "WARNING: zip not available"
+                '''
+            }
+        }
+        
         stage('Checkout') {
             steps {
                 git branch: 'main', 
@@ -18,9 +27,16 @@ pipeline {
         stage('Build') {
             steps {
                 powershell '''
+                    if (Test-Path _temp) { Remove-Item _temp -Recurse -Force }
                     New-Item -ItemType Directory -Path _temp
-                    Copy-Item * _temp -Exclude "*.git*", "*.json"
-                    Compress-Archive -Path _temp/* -DestinationPath rpn-calculator.zip
+                    Get-ChildItem -Exclude "*.git*","*.json","_temp" | 
+                        Copy-Item -Destination _temp -Recurse
+                    if (Get-ChildItem _temp) {
+                        Compress-Archive -Path _temp/* -DestinationPath rpn-calculator.zip -Force
+                    } else {
+                        Write-Error "No files to compress!"
+                        exit 1
+                    }
                     Remove-Item _temp -Recurse -Force
                 '''
             }
@@ -30,7 +46,7 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_KEY')]) {
                     bat '''
-                        gcloud auth activate-service-account --key-file=%GCP_KEY%
+                        gcloud auth activate-service-account --key-file="%GCP_KEY%"
                         gcloud config set project %GCP_PROJECT%
                     '''
                 }
@@ -56,7 +72,7 @@ pipeline {
     
     post {
         always {
-            bat 'del rpn-calculator.zip 2> nul || echo "No zip to delete"'
+            bat 'del rpn-calculator.zip 2>nul || echo "No zip to delete"'
         }
     }
 }
