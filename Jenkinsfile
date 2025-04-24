@@ -29,34 +29,17 @@ pipeline {
         stage('Package Artifact') {
             steps {
                 powershell '''
-                    # Clean up previous temp directory if exists
-                    $tempDir = "$env:WORKSPACE\\temp"
-                    if (Test-Path $tempDir) { 
-                        Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-                    }
-                    
-                    # Create new temp directory
-                    New-Item -ItemType Directory -Path $tempDir | Out-Null
+                    # Create temp directory (no need to clean first)
+                    $tempDir = "$env:WORKSPACE\\_temp"
+                    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
                     
                     # Copy files excluding patterns
-                    Get-ChildItem -Exclude "*.git*", "temp", "Jenkinsfile" | 
-                        Where-Object { $_.FullName -ne $tempDir } |
+                    Get-ChildItem -Exclude "*.git*", "_temp", "Jenkinsfile" | 
                         Copy-Item -Destination $tempDir -Recurse -Force
                     
                     # Create zip archive
                     $zipPath = "$env:WORKSPACE\\rpn-calculator.zip"
-                    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-                    
-                    Add-Type -Assembly "System.IO.Compression.FileSystem"
-                    [IO.Compression.ZipFile]::CreateFromDirectory(
-                        $tempDir,
-                        $zipPath,
-                        [IO.Compression.CompressionLevel]::Optimal,
-                        $false
-                    )
-                    
-                    # Cleanup temp directory
-                    Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+                    Compress-Archive -Path "$tempDir\\*" -DestinationPath $zipPath -Force
                 '''
                 archiveArtifacts artifacts: 'rpn-calculator.zip', fingerprint: true
                 echo 'Application packaged successfully'
@@ -98,19 +81,13 @@ pipeline {
                 echo "✅ Deployment Successful! Access your app at: ${url}"
             }
         }
-        failure {
-            echo "❌ Pipeline failed! Check the console output for details."
-        }
         always {
-            // Safe cleanup that won't fail the pipeline
-            script {
-                try {
-                    bat 'del rpn-calculator.zip 2>nul || echo "No zip to delete"'
-                    bat 'rmdir /s /q temp 2>nul || echo "No temp dir to delete"'
-                } catch (Exception e) {
-                    echo "⚠️ Cleanup failed but pipeline continues: ${e.message}"
-                }
-            }
+            // Silent cleanup that won't fail the pipeline
+            bat '''
+                @echo off
+                del rpn-calculator.zip 2>nul
+                rmdir /s /q _temp 2>nul
+            '''
         }
     }
 }
