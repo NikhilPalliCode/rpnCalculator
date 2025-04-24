@@ -21,7 +21,10 @@ pipeline {
         stage('Package Artifact') {
             steps {
                 powershell '''
-                    Compress-Archive -Path * -DestinationPath rpn-calculator.zip -Exclude "*.git*"
+                    New-Item -ItemType Directory -Path temp
+                    Copy-Item * -Destination temp -Exclude "*.git*"
+                    Compress-Archive -Path temp/* -DestinationPath rpn-calculator.zip
+                    Remove-Item temp -Recurse -Force
                 '''
                 archiveArtifacts artifacts: 'rpn-calculator.zip', fingerprint: true
                 echo 'Application packaged successfully'
