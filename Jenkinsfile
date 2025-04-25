@@ -72,22 +72,39 @@ pipeline {
     }
     
     post {
-        success {
-            script {
+    success {
+        script {
+            try {
+                // First verify the service exists
+                bat """
+                    "%GCLOUD_PATH%" run services list \
+                    --project=%GCP_PROJECT% \
+                    --region=%CLOUD_RUN_REGION% \
+                    --filter="metadata.name=%APP_NAME%" \
+                    --format="value(name)"
+                """
+                
+                // Only try to get URL if service exists
                 def url = bat(
                     script: '"%GCLOUD_PATH%" run services describe %APP_NAME% --platform managed --region %CLOUD_RUN_REGION% --project=%GCP_PROJECT% --format="value(status.url)"',
                     returnStdout: true
                 ).trim()
+                
                 echo "✅ Deployment Successful! Access your app at: ${url}"
+            } catch (Exception e) {
+                echo "⚠️ Could not retrieve service URL. The deployment might have succeeded but:"
+                echo "1. Service might not be immediately available"
+                echo "2. Service might have a different name"
+                echo "3. Check Cloud Run console manually: https://console.cloud.google.com/run?project=%GCP_PROJECT%"
             }
         }
-        always {
-            // Silent cleanup that won't fail the pipeline
-            bat '''
-                @echo off
-                del rpn-calculator.zip 2>nul
-                rmdir /s /q _temp 2>nul
-            '''
-        }
     }
+    always {
+        bat '''
+            @echo off
+            del rpn-calculator.zip 2>nul
+            rmdir /s /q _temp 2>nul
+        '''
+    }
+}
 }
