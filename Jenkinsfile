@@ -75,7 +75,7 @@ pipeline {
         success {
             script {
                 def url = bat(
-                    script: '"%GCLOUD_PATH%" run services describe %APP_NAME% --platform managed --region %CLOUD_RUN_REGION% --format="value(status.url)"',
+                    script: '"%GCLOUD_PATH%" run services describe %APP_NAME% --platform managed --region %CLOUD_RUN_REGION% --project=%GCP_PROJECT% --format="value(status.url)"',
                     returnStdout: true
                 ).trim()
                 echo "✅ Deployment Successful! Access your app at: ${url}"
